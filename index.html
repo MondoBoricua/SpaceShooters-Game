@@ -2,6 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <title>Space Shooter Arcade Game</title>
         <!-- Inline CSS -->
         <style>
@@ -12,25 +13,211 @@
                 align-items: center;
                 height: 100vh;
                 background-color: #2b2828;
+                touch-action: none;
+                overflow: hidden;
             } 
 
             canvas {
                 border: 1px solid black;
             }
+
+            #mobileControls {
+                position: fixed;
+                bottom: 20px;
+                left: 0;
+                right: 0;
+                display: none;
+                justify-content: space-between;
+                padding: 20px;
+                pointer-events: none;
+            }
+
+            #restartButton {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                padding: 15px 30px;
+                background: rgba(255, 255, 255, 0.3);
+                color: white;
+                border: 2px solid white;
+                border-radius: 10px;
+                font-size: 24px;
+                display: none;
+                pointer-events: auto;
+                cursor: pointer;
+            }
+
+            #joystickArea {
+                width: 150px;
+                height: 150px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 50%;
+                position: relative;
+                pointer-events: auto;
+            }
+
+            #joystick {
+                width: 50px;
+                height: 50px;
+                background: rgba(255, 255, 255, 0.5);
+                border-radius: 50%;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
+
+            #shootButton {
+                width: 80px;
+                height: 80px;
+                background: rgba(255, 0, 0, 0.5);
+                border-radius: 50%;
+                pointer-events: auto;
+            }
         </style>
     </head>
     <body>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="mobileControls">
+            <div id="joystickArea">
+                <div id="joystick"></div>
+            </div>
+            <div id="shootButton"></div>
+        </div>
+        <div id="restartButton">RESTART</div>
 
         <!-- JavaScript code goes here -->  
         <script>
             const canvas = document.getElementById("gameCanvas");
             const ctx = canvas.getContext("2d");
+            const mobileControls = document.getElementById("mobileControls");
+            const joystickArea = document.getElementById("joystickArea");
+            const joystick = document.getElementById("joystick");
+            const shootButton = document.getElementById("shootButton");
+            const restartButton = document.getElementById("restartButton");
+
+            // Detectar si es dispositivo móvil
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+                mobileControls.style.display = "flex";
+                // Ajustar el tamaño del canvas para móviles
+                const scale = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+                canvas.style.transform = `scale(${scale})`;
+                canvas.style.transformOrigin = "center top";
+            }
+
+            // Variables para el joystick
+            let joystickActive = false;
+            let joystickStartX = 0;
+            let joystickStartY = 0;
+            let currentJoystickX = 0;
+            let currentJoystickY = 0;
+
+            // Eventos táctiles para el joystick
+            joystickArea.addEventListener('touchstart', handleJoystickStart);
+            joystickArea.addEventListener('touchmove', handleJoystickMove);
+            joystickArea.addEventListener('touchend', handleJoystickEnd);
+
+            // Evento táctil para el botón de disparo
+            shootButton.addEventListener('touchstart', handleShoot);
+
+            function handleJoystickStart(e) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = joystickArea.getBoundingClientRect();
+                joystickStartX = touch.clientX - rect.left;
+                joystickStartY = touch.clientY - rect.top;
+                joystickActive = true;
+                updateJoystickPosition(joystickStartX, joystickStartY);
+            }
+
+            function handleJoystickMove(e) {
+                e.preventDefault();
+                if (!joystickActive) return;
+                
+                const touch = e.touches[0];
+                const rect = joystickArea.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                // Calcular la distancia desde el centro
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const deltaX = x - centerX;
+                const deltaY = y - centerY;
+                const distance = Math.min(50, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
+                const angle = Math.atan2(deltaY, deltaX);
+                
+                // Actualizar posición del joystick
+                currentJoystickX = centerX + distance * Math.cos(angle);
+                currentJoystickY = centerY + distance * Math.sin(angle);
+                updateJoystickPosition(currentJoystickX, currentJoystickY);
+                
+                // Mover la nave del jugador
+                if (player) {
+                    const normalizedX = deltaX / 150;    // División por 50 controla la sensibilidad del joystick
+                    const normalizedY = deltaY / 150;    // Aumentar el número = joystick más lento, disminuir = más rápido
+                    player.velocityX = normalizedX * player.speed;  // Multiplicado por player.speed (30 por defecto)
+                    player.velocityY = normalizedY * player.speed;  // Reducir player.speed para movimiento más lento
+                    
+                    // Activar el fuego cuando el joystick se mueve hacia arriba
+                    player.isMovingUp = deltaY < -10;
+                }
+            }
+
+            function handleJoystickEnd(e) {
+                e.preventDefault();
+                joystickActive = false;
+                // Centrar el joystick
+                const rect = joystickArea.getBoundingClientRect();
+                updateJoystickPosition(rect.width / 2, rect.height / 2);
+                if (player) {
+                    player.velocityX = 0;
+                    player.velocityY = 0;
+                    player.isMovingUp = false; // Desactivar el fuego cuando se suelta el joystick
+                }
+            }
+
+            function updateJoystickPosition(x, y) {
+                joystick.style.left = x + 'px';
+                joystick.style.top = y + 'px';
+            }
+
+            function handleShoot(e) {
+                e.preventDefault();
+                const now = Date.now();
+                if (now - lastShot >= shootCooldown) {
+                    bullets.push(new Bullet(player.x, player.y));
+                    lastShot = now;
+                    playSound(laserSound);
+                }
+            }
+
+            // Load game images
+            const playerImage = new Image();
+            playerImage.src = 'assets/images/player-ship.png';
+            const enemyImage = new Image();
+            enemyImage.src = 'assets/images/enemy-ship.png';
+
+            // Load game sounds
+            const explosionSound = new Audio('assets/sounds/explosion.mp3');
+            const laserSound = new Audio('assets/sounds/laser.mp3');
+
+            // Función para reproducir sonidos
+            function playSound(sound) {
+                // Crear una nueva instancia para permitir sonidos simultáneos
+                const soundClone = sound.cloneNode();
+                soundClone.volume = 0.3; // Reducir el volumen al 30%
+                soundClone.play();
+            }
 
             let score = 0;
             let enemies = [];
             let player;
             let bullets = [];
+            let asteroids = [];
+            let explosions = [];
 
             class Player {
                 constructor() {
@@ -38,18 +225,94 @@
                     this.height = 50;
                     this.x = canvas.width / 2 - this.width / 2;
                     this.y = canvas.height - this.height - 10;
-                    this.speed = 30;
-                    this.lives = 3;
+                    this.speed = 30;        // Velocidad base de la nave (afecta tanto al joystick como al teclado)
+                    this.lives = 6;
+                    this.velocityX = 0;
+                    this.velocityY = 0;
+                    this.acceleration = 8;   // Aceleración para controles de teclado (aumentar para más velocidad con teclado)
+                    this.friction = 0.95;    // Fricción (más cerca de 1 = menos fricción = más velocidad mantenida)
+                    this.maxVelocity = 15;   // Velocidad máxima para evitar que la nave vaya demasiado rápido
+                    this.isMovingUp = false;
+                }
+
+                update() {
+                    // Apply velocities
+                    this.x += this.velocityX;
+                    this.y += this.velocityY;
+
+                    // Apply friction
+                    this.velocityX *= this.friction;
+                    this.velocityY *= this.friction;
+
+                    // Limit maximum velocity
+                    this.velocityX = Math.max(Math.min(this.velocityX, this.maxVelocity), -this.maxVelocity);
+                    this.velocityY = Math.max(Math.min(this.velocityY, this.maxVelocity), -this.maxVelocity);
+
+                    // Keep ship in bounds
+                    this.x = Math.max(0, Math.min(canvas.width - this.width, this.x));
+                    this.y = Math.max(0, Math.min(canvas.height - this.height, this.y));
+
+                    // Reset isMovingUp if vertical velocity is near zero
+                    if (Math.abs(this.velocityY) < 0.1) {
+                        this.isMovingUp = false;
+                    }
+                }
+
+                moveLeft() {
+                    this.velocityX -= this.acceleration;
+                }
+
+                moveRight() {
+                    this.velocityX += this.acceleration;
+                }
+
+                moveUp() {
+                    this.velocityY -= this.acceleration;
+                    this.isMovingUp = true;
+                }
+
+                moveDown() {
+                    this.velocityY += this.acceleration;
+                    this.isMovingUp = false;
                 }
 
                 draw() {
-                    ctx.fillStyle = "#00ff00";
-                    ctx.beginPath();
-                    ctx.moveTo(this.x + this.width / 2, this.y);
-                    ctx.lineTo(this.x + this.width, this.y + this.height);
-                    ctx.lineTo(this.x, this.y + this.height);
-                    ctx.closePath();
-                    ctx.fill();
+                    // Dibujar el fuego del propulsor cuando se mueve hacia arriba
+                    if (this.isMovingUp) {
+                        const fireHeight = 20;
+                        const flickerOffset = Math.random() * 5;
+                        
+                        // Fuego principal (naranja)
+                        ctx.fillStyle = "#ff6600";
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + this.width * 0.3, this.y + this.height);
+                        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height + fireHeight + flickerOffset);
+                        ctx.lineTo(this.x + this.width * 0.7, this.y + this.height);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Fuego interno (amarillo)
+                        ctx.fillStyle = "#ffff00";
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + this.width * 0.4, this.y + this.height);
+                        ctx.lineTo(this.x + this.width * 0.5, this.y + this.height + (fireHeight * 0.7) + flickerOffset);
+                        ctx.lineTo(this.x + this.width * 0.6, this.y + this.height);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+
+                    // Dibujar la nave
+                    if (playerImage.complete) {
+                        ctx.drawImage(playerImage, this.x, this.y, this.width, this.height);
+                    } else {
+                        ctx.fillStyle = "#00ff00";
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + this.width / 2, this.y);
+                        ctx.lineTo(this.x + this.width, this.y + this.height);
+                        ctx.lineTo(this.x, this.y + this.height);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
             }
  
@@ -61,42 +324,173 @@
                     this.y = Math.random() * -100;
                     this.speed = 2 + Math.random() * 2;
                     this.movementAngle = 0;
+                    this.lastShot = Date.now() + Math.random() * 500;
+                    this.shootCooldown = 1000 + Math.random() * 500;
                 }
 
                 update() {
                     this.y += this.speed;
                     this.x += Math.sin(this.movementAngle) * 2;
                     this.movementAngle += 0.05;
+
+                    // Enemy shooting logic
+                    const now = Date.now();
+                    if (now - this.lastShot >= this.shootCooldown) {
+                        bullets.push(new Bullet(this.x, this.y, true));
+                        this.lastShot = now;
+                    }
                 }
 
                 draw() {
-                    ctx.fillStyle = "#ff4444";
-                    ctx.beginPath();
-                    ctx.moveTo(this.x + this.width / 2, this.y + this.height);
-                    ctx.lineTo(this.x + this.width, this.y);
-                    ctx.lineTo(this.x, this.y);
-                    ctx.closePath();
-                    ctx.fill();
+                    if (enemyImage.complete) {
+                        ctx.drawImage(enemyImage, this.x, this.y, this.width, this.height);
+                    } else {
+                        ctx.fillStyle = "#ff4444";
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + this.width / 2, this.y + this.height);
+                        ctx.lineTo(this.x + this.width, this.y);
+                        ctx.lineTo(this.x, this.y);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
             }
 
             class Bullet {
-                constructor(x, y) {
+                constructor(x, y, isEnemy = false) {
                     this.width = 4;
                     this.height = 15;
-                    this.x = x + (player.width / 2) - (this.width / 2);
-                    this.y = y;
-                    this.speed = 10;
+                    if (isEnemy) {
+                        this.x = x + 20 - (this.width / 2);
+                        this.y = y;
+                    } else {
+                        this.x = x + (player.width / 2) - (this.width / 2);
+                        this.y = y;
+                    }
+                    this.speed = isEnemy ? 7 : 10;
+                    this.isEnemy = isEnemy;
                 }
 
                 update() {
-                    this.y -= this.speed;
+                    this.y += this.isEnemy ? this.speed : -this.speed;
                 }
 
                 draw() {
-                    ctx.fillStyle = "#ffff00";
+                    ctx.fillStyle = this.isEnemy ? "#ff0000" : "#ffff00";
                     ctx.fillRect(this.x, this.y, this.width, this.height);
                 }
+            }
+
+            class Asteroid {
+                constructor() {
+                    this.x = Math.random() * canvas.width;
+                    this.y = -50;
+                    this.size = 20 + Math.random() * 20; // Tamaño aleatorio entre 20 y 40
+                    this.speed = 1 + Math.random() * 2;  // Velocidad aleatoria
+                    this.rotation = 0;
+                    this.rotationSpeed = (Math.random() - 0.5) * 0.1; // Velocidad de rotación aleatoria
+                    // Crear forma poligonal aleatoria para el asteroide
+                    this.points = [];
+                    const vertices = 8 + Math.floor(Math.random() * 4); // 8-11 vértices
+                    for (let i = 0; i < vertices; i++) {
+                        const angle = (i / vertices) * Math.PI * 2;
+                        const radius = this.size * (0.8 + Math.random() * 0.4); // Radio irregular
+                        this.points.push({
+                            x: Math.cos(angle) * radius,
+                            y: Math.sin(angle) * radius
+                        });
+                    }
+                }
+
+                update() {
+                    this.y += this.speed;
+                    this.rotation += this.rotationSpeed;
+                }
+
+                draw() {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+                    
+                    ctx.fillStyle = "#808080";
+                    ctx.beginPath();
+                    ctx.moveTo(this.points[0].x, this.points[0].y);
+                    for (let i = 1; i < this.points.length; i++) {
+                        ctx.lineTo(this.points[i].x, this.points[i].y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // Agregar detalles al asteroide
+                    ctx.strokeStyle = "#606060";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    
+                    ctx.restore();
+                }
+
+                checkCollision(obj) {
+                    const dx = this.x - obj.x - obj.width/2;
+                    const dy = this.y - obj.y - obj.height/2;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    return distance < this.size + obj.width/2;
+                }
+            }
+
+            class Explosion {
+                constructor(x, y, size = 30) {
+                    this.x = x;
+                    this.y = y;
+                    this.size = size;
+                    this.particles = [];
+                    this.lifetime = 30; // Duración de la explosión en frames
+                    
+                    // Crear partículas
+                    const numParticles = 12;
+                    for (let i = 0; i < numParticles; i++) {
+                        const angle = (i / numParticles) * Math.PI * 2;
+                        const speed = 2 + Math.random() * 2;
+                        this.particles.push({
+                            x: 0,
+                            y: 0,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            size: 3 + Math.random() * 3,
+                            color: `hsl(${Math.random() * 30 + 15}, 100%, 50%)` // Colores naranja/amarillo aleatorios
+                        });
+                    }
+                }
+
+                update() {
+                    this.lifetime--;
+                    for (let particle of this.particles) {
+                        particle.x += particle.vx;
+                        particle.y += particle.vy;
+                        particle.size *= 0.95; // Las partículas se hacen más pequeñas con el tiempo
+                    }
+                }
+
+                draw() {
+                    const alpha = this.lifetime / 30; // Fade out
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    
+                    // Dibujar partículas
+                    for (let particle of this.particles) {
+                        ctx.fillStyle = particle.color;
+                        ctx.globalAlpha = alpha;
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    ctx.restore();
+                }
+            }
+
+            function createExplosion(x, y, size) {
+                explosions.push(new Explosion(x, y, size));
+                playSound(explosionSound);
             }
 
             let gameOver = false;
@@ -107,8 +501,12 @@
                 player = new Player();
                 enemies = [];
                 bullets = [];
+                asteroids = [];
                 score = 0;
                 gameOver = false;
+                if (isMobile) {
+                    restartButton.style.display = 'none';
+                }
                 spawnEnemies();
             }
 
@@ -118,6 +516,12 @@
                     for (let i = 0; i < enemiesNeeded; i++) {
                         enemies.push(new Enemy());
                     }
+                }
+            }
+
+            function spawnAsteroid() {
+                if (Math.random() < 0.02 && asteroids.length < 5) { // 2% de probabilidad por frame
+                    asteroids.push(new Asteroid());
                 }
             }
 
@@ -136,12 +540,21 @@
                 }
 
                 if (!gameOver) {
+                    // Dibujar asteroides
+                    for (let asteroid of asteroids) {
+                        asteroid.draw();
+                    }
+                    
                     player.draw();
                     for (let enemy of enemies) {
                         enemy.draw();
                     }
                     for (let bullet of bullets) {
                         bullet.draw();
+                    }
+                    // Dibujar explosiones
+                    for (let explosion of explosions) {
+                        explosion.draw();
                     }
                 }
 
@@ -156,33 +569,77 @@
                     ctx.font = "48px Arial";
                     ctx.textAlign = "center";
                     ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
-                    ctx.font = "24px Arial";
-                    ctx.fillText("Press ENTER to restart", canvas.width / 2, canvas.height / 2 + 40);
+                    if (!isMobile) {
+                        ctx.font = "24px Arial";
+                        ctx.fillText("Press ENTER to restart", canvas.width / 2, canvas.height / 2 + 40);
+                    }
                     ctx.textAlign = "left";
+                    if (isMobile) {
+                        restartButton.style.display = 'block';
+                    }
                 }
             }
 
             function update() {
                 if (!gameOver) {
+                    // Update player
+                    player.update();
+
+                    // Actualizar explosiones
+                    for (let i = explosions.length - 1; i >= 0; i--) {
+                        explosions[i].update();
+                        if (explosions[i].lifetime <= 0) {
+                            explosions.splice(i, 1);
+                        }
+                    }
+
+                    // Actualizar y comprobar colisiones con asteroides
+                    for (let i = asteroids.length - 1; i >= 0; i--) {
+                        const asteroid = asteroids[i];
+                        asteroid.update();
+
+                        if (asteroid.y > canvas.height + 50) {
+                            asteroids.splice(i, 1);
+                            continue;
+                        }
+
+                        if (asteroid.checkCollision(player)) {
+                            createExplosion(asteroid.x, asteroid.y, asteroid.size);
+                            asteroids.splice(i, 1);
+                            player.lives--;
+                            if (player.lives <= 0) {
+                                gameOver = true;
+                            }
+                            continue;
+                        }
+
+                        for (let j = bullets.length - 1; j >= 0; j--) {
+                            const bullet = bullets[j];
+                            if (!bullet.isEnemy && asteroid.checkCollision(bullet)) {
+                                createExplosion(asteroid.x, asteroid.y, asteroid.size);
+                                asteroids.splice(i, 1);
+                                bullets.splice(j, 1);
+                                score += 5;
+                                break;
+                            }
+                        }
+                    }
+
                     // Update enemies
                     for (let i = enemies.length - 1; i >= 0; i--) {
                         const enemy = enemies[i];
                         enemy.update();
 
-                        // Check if enemy is off screen
                         if (enemy.y > canvas.height) {
                             enemies.splice(i, 1);
-                            player.lives--;
-                            if (player.lives <= 0) {
-                                gameOver = true;
-                            }
+                            continue;
                         }
 
-                        // Check for collision with player
                         if (enemy.x < player.x + player.width &&
                             enemy.x + enemy.width > player.x &&
                             enemy.y < player.y + player.height &&
                             enemy.y + enemy.height > player.y) {
+                            createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, 40);
                             enemies.splice(i, 1);
                             player.lives--;
                             if (player.lives <= 0) {
@@ -190,13 +647,14 @@
                             }
                         }
 
-                        // Check for collision with bullets
                         for (let j = bullets.length - 1; j >= 0; j--) {
                             const bullet = bullets[j];
-                            if (bullet.x < enemy.x + enemy.width &&
+                            if (!bullet.isEnemy &&
+                                bullet.x < enemy.x + enemy.width &&
                                 bullet.x + bullet.width > enemy.x &&
                                 bullet.y < enemy.y + enemy.height &&
                                 bullet.y + bullet.height > enemy.y) {
+                                createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, 40);
                                 enemies.splice(i, 1);
                                 bullets.splice(j, 1);
                                 score += 10;
@@ -205,15 +663,33 @@
                         }
                     }
 
-                    // Update bullets
+                    // Update bullets and check for collisions with player
                     for (let i = bullets.length - 1; i >= 0; i--) {
-                        bullets[i].update();
-                        if (bullets[i].y < 0) {
+                        const bullet = bullets[i];
+                        bullet.update();
+
+                        // Remove bullets that are off screen
+                        if (bullet.y < 0 || bullet.y > canvas.height) {
                             bullets.splice(i, 1);
+                            continue;
+                        }
+
+                        // Check enemy bullets collision with player
+                        if (bullet.isEnemy &&
+                            bullet.x < player.x + player.width &&
+                            bullet.x + bullet.width > player.x &&
+                            bullet.y < player.y + player.height &&
+                            bullet.y + bullet.height > player.y) {
+                            bullets.splice(i, 1);
+                            player.lives--;
+                            if (player.lives <= 0) {
+                                gameOver = true;
+                            }
                         }
                     }
 
                     spawnEnemies();
+                    spawnAsteroid();
                 }
 
                 draw();
@@ -229,27 +705,37 @@
                 if (!gameOver) {
                     switch (event.key) {
                         case "ArrowUp":
-                            player.y = Math.max(0, player.y - player.speed);
+                            player.moveUp();
                             break;
                         case "ArrowDown":
-                            player.y = Math.min(canvas.height - player.height, player.y + player.speed);
+                            player.moveDown();
                             break;
                         case "ArrowLeft":
-                            player.x = Math.max(0, player.x - player.speed);
+                            player.moveLeft();
                             break;
                         case "ArrowRight":
-                            player.x = Math.min(canvas.width - player.width, player.x + player.speed);
+                            player.moveRight();
                             break;
                         case " ":
                             const now = Date.now();
                             if (now - lastShot >= shootCooldown) {
                                 bullets.push(new Bullet(player.x, player.y));
                                 lastShot = now;
+                                playSound(laserSound);
                             }
                             break;
                     }
                 }
             }
+
+            // Evento para el botón de reinicio
+            restartButton.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                if (gameOver) {
+                    setup();
+                    restartButton.style.display = 'none';
+                }
+            });
 
             setup();
             update();
